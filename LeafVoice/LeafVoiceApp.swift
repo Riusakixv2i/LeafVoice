@@ -3,6 +3,7 @@ import AVFoundation
 import PDFKit
 import UniformTypeIdentifiers
 import MediaPlayer
+import ZIPFoundation
 
 @main
 struct LeafVoiceApp: App {
@@ -105,7 +106,9 @@ final class ReaderModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         do {
             let ext = url.pathExtension.lowercased()
             var text = ""
-            if ext == "pdf" {
+            if ext == "epub" {
+                text = try EPUBReader.read(url)
+            } else if ext == "pdf" {
                 guard let doc = PDFDocument(url: url) else { throw NSError(domain:"LeafVoice",code:1,userInfo:[NSLocalizedDescriptionKey:"Cannot open PDF"]) }
                 text = (0..<doc.pageCount).compactMap { doc.page(at:$0)?.string }.joined(separator:"\n\n")
             } else {
@@ -233,7 +236,7 @@ struct ReaderHome: View {
                         }.padding(.horizontal)
                     }
                 } else {
-                    ContentUnavailableView("Your audiobook library", systemImage:"books.vertical",description:Text("Import a TXT or text-based PDF and listen using the iPhone's built-in voices."))
+                    ContentUnavailableView("Your audiobook library", systemImage:"books.vertical",description:Text("Import an EPUB, TXT or text-based PDF and listen using the iPhone's built-in voices."))
                 }
             }
             .navigationTitle("LeafVoice")
@@ -249,7 +252,7 @@ struct ReaderHome: View {
                     Button { model.importing = true } label: { Image(systemName:"plus") }
                 }
             }
-            .fileImporter(isPresented:$model.importing,allowedContentTypes:[.plainText,.pdf,UTType(filenameExtension:"txt")!]) { result in
+            .fileImporter(isPresented:$model.importing,allowedContentTypes:[.plainText,.pdf,UTType(filenameExtension:"epub") ?? .data]) { result in
                 switch result {
                 case .success(let url): model.importBook(url)
                 case .failure(let error): model.errorMessage = error.localizedDescription
