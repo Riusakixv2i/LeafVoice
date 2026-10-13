@@ -26,6 +26,7 @@ final class ReaderModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     @Published var voiceID = ""
     @Published var segmentIndex = 0
     @Published var importing = false
+    @Published var importStatus: String?
     @Published var errorMessage: String?
     private let speaker = AVSpeechSynthesizer()
     private var segments: [String] = []
@@ -49,7 +50,7 @@ final class ReaderModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         let audio = AVAudioSession.sharedInstance()
         try? audio.setCategory(.playback, mode: .spokenAudio, options: [.allowAirPlay, .allowBluetooth])
         try? audio.setActive(true)
-        if let data = UserDefaults.standard.data(forKey: "books"),
+        if let data = try? Data(contentsOf: storageURL),
            let saved = try? JSONDecoder().decode([StoredBook].self, from: data) { books = saved }
         if let value = UserDefaults.standard.string(forKey: "selected"), let id = UUID(uuidString: value) { currentID = id }
         rate = UserDefaults.standard.object(forKey: "rate") as? Float ?? 0.49
@@ -62,8 +63,10 @@ final class ReaderModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         controls.previousTrackCommand.addTarget { [weak self] _ in Task { @MainActor in self?.skip(-1) }; return .success }
     }
 
+    private var storageURL: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("library.json") }
     func persist() {
-        if let data = try? JSONEncoder().encode(books) { UserDefaults.standard.set(data, forKey: "books") }
+        do { let data = try JSONEncoder().encode(books); try data.write(to: storageURL, options: .atomic) }
+        catch { errorMessage = "Could not save book: \(error.localizedDescription)" }
         UserDefaults.standard.set(currentID?.uuidString, forKey: "selected")
         UserDefaults.standard.set(rate, forKey: "rate")
         UserDefaults.standard.set(voiceID, forKey: "voice")
@@ -104,6 +107,7 @@ final class ReaderModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         let granted = url.startAccessingSecurityScopedResource()
         defer { if granted { url.stopAccessingSecurityScopedResource() } }
         do {
+            importStatus = "Importing \(url.lastPathComponent)…"
             let ext = url.pathExtension.lowercased()
             var text = ""
             if ext == "epub" {
@@ -121,7 +125,8 @@ final class ReaderModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
             let b = StoredBook(title:url.deletingPathExtension().lastPathComponent, text:text)
             books.insert(b, at:0)
             open(b)
-        } catch { errorMessage = error.localizedDescription }
+            importStatus = "Imported \(b.title)"
+        } catch { importStatus = nil; errorMessage = error.localizedDescription }
     }
     func play() {
         guard !segments.isEmpty else { return }
@@ -258,6 +263,7 @@ struct ReaderHome: View {
                 case .failure(let error): model.errorMessage = error.localizedDescription
                 }
             }
+            .safeAreaInset(edge:.bottom) { if let status = model.importStatus { Text(status).font(.caption).padding(8).frame(maxWidth:.infinity).background(.thinMaterial) } }
             .alert("Could not import",isPresented:Binding(get:{model.errorMessage != nil},set:{if !$0 {model.errorMessage=nil}})) {
                 Button("OK",role:.cancel) { model.errorMessage=nil }
             } message: {Text(model.errorMessage ?? "")}
