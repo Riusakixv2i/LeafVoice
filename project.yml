@@ -1,11 +1,17 @@
 name: LeafVoice
 options:
   bundleIdPrefix: com.leafvoice
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    from: 0.9.19
 targets:
   LeafVoice:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
+    dependencies:
+      - package: ZIPFoundation
     sources:
       - path: LeafVoice
     settings:
