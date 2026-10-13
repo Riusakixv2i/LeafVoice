@@ -1,0 +1,33 @@
+name: Build LeafVoice unsigned IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Create Xcode project
+        run: xcodegen generate
+      - name: Build for physical iPhone
+        run: |
+          set -euo pipefail
+          xcodebuild -project LeafVoice.xcodeproj -scheme LeafVoice -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/build" CODE_SIGNING_ALLOWED=NO build
+      - name: Package IPA for SideStore signing
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/package/Payload"
+          ditto "$RUNNER_TEMP/build/Build/Products/Release-iphoneos/LeafVoice.app" "$RUNNER_TEMP/package/Payload/LeafVoice.app"
+          (cd "$RUNNER_TEMP/package" && zip -qry "$GITHUB_WORKSPACE/LeafVoice-unsigned.ipa" Payload)
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LeafVoice-unsigned-ipa
+          path: LeafVoice-unsigned.ipa
+          if-no-files-found: error
